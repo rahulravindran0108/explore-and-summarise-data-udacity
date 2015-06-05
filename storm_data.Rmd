@@ -10,6 +10,7 @@ Load the libraries we will need:
 library(ggplot2)
 library(maps)
 library(mapproj)
+
 ```
 Our data is derived from the [NOAA Storm Database](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2).  
 Read in the data, mapping as many fields to numerical fields as possible. We are not converting the dates at this point, as we do not need the dates in our analysis. More information about the data file is available from the National Weather Service [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf).  
@@ -29,6 +30,7 @@ smallData <- data[data$FATALITIES > 0 | data$INJURIES > 0 | data$PROPDMG > 0 |
     data$CROPDMG > 0, ]
 ```
 This leaves us with 254,633 observations.  
+
 The EVTYPE fields contains a large number of errors and issues. In order to report on the data, we will add an additional column named category that contains the event category as used by the NCDC: 
 - convection  
 - extreme temperature
@@ -38,6 +40,7 @@ The EVTYPE fields contains a large number of errors and issues. In order to repo
 - winter
 - other
 This is also the order of importance with which we will treat the various events. Convection events are the most important, so this order will also decide the tie-breaker if an event belongs to more than one category. 
+
 ```{r}
 convection <- c("?.*LIGHTING|LIGHTN|LIGNTNING|TORNADO|TORNDAO|WIND|TSTM|THUNDER|WND|HAIL|TURBULENCE|GUSTNADO?.*")
 temperature <- c("?.*COLD|HEAT|WARM|TEMPERATURE|THERMIA?.*")
@@ -70,6 +73,7 @@ smallData[grepl("m|M", smallData$CROPDMGEXP, ignore.case = TRUE), "cropdamageEXP
 smallData[grepl("b|B", smallData$CROPDMGEXP, ignore.case = TRUE), "cropdamageEXP"] = 1e+09
 smallData$cropdamage = smallData$CROPDMG * smallData$cropdamageEXP
 ```
+
 
 Having gone through the steps above, we now have clean dataset containing all the information to perform exploratory data analysis.
 
@@ -118,6 +122,21 @@ Breaking our category variable into individual events, we get the following resu
 table(washington2$EVTYPE)
 ```
 
+Lets now look at some box plots of few variables:
+
+```{r}
+boxplot(FATALITIES ~ INJURIES, data=smallData,main="box plot of fatalities vs injuries", ylab("fatalities"),xlab("Injuries"))
+```
+
+We can further get details of mean,median and other summary data of fatalities and injuries which contribute to the population damage 
+
+```{r}
+summary(smallData$FATALITIES)
+```
+
+```{r}
+summary(smallData$INJURIES)
+```
 ## Bivariate Plots
 Let's look at a few scatter plots to identify - if there is any kind of relationship present between a few features. 
 
@@ -134,7 +153,7 @@ Let's look at the relationship between property damage and crop damage:
 ```{r message=FALSE,warning=FALSE}
 fatalities<-subset(smallData,FATALITIES > 0 & INJURIES > 0)
 x<-ggplot(fatalities, aes(x=PROPDMG,y=CROPDMG,))+geom_point(shape=1)+geom_smooth()
-x + facet_grid(. ~ category)+scale_y_continuous(limits=c(0,1000))
+x + facet_grid(. ~ category,scale="free")+scale_y_continuous(limits=c(0,1000))
 ```
 
 The x-axis depicts property damage, while the y axis shows corresponding crop damage. I have faceted accroding to categories of events taking place so as to get more perspective into relationship between events.
@@ -153,7 +172,7 @@ ggplot(smallData, aes(LONGITUDE, LATITUDE, colour = smallData$FATALITIES,100)) +
 Figure above shows the fatalities and in which Latitude and Longitude they are concentrated. Most of the data shows a slight amount of fatalities due to the overplotting of blue dots. In order to get a better perspective we will use the maps package to plot the fatalities on Map of USA.
 
 ```{r message=FALSE,warning=FALSE}
-ggplot(smallData, aes(LONGITUDE, LATITUDE, colour = factor(cut(smallData$FATALITIES,100, label = FALSE)))) + geom_point(size = 4) + geom_point(size = 4,shape = 1, colour = "steelblue", alpha = 0.4) + labs(x = "Longitude", y = "Latitude") + scale_colour_grey() + theme_bw()+facet_grid(~category)
+ggplot(smallData, aes(LONGITUDE, LATITUDE, colour = smallData$FATALITIES)) + geom_point(size = 1,shape = 1, colour = "steelblue", alpha = 0.4) + labs(x = "Longitude", y = "Latitude") + scale_colour_grey() + theme_bw()+facet_grid(~category)
 ```
 
 Figure above shows multiple deaths in the case of Convection Events and Flood Events.
@@ -184,6 +203,16 @@ smallData$incidents = smallData$FATALITIES + smallData$INJURIES
 
 We create a new set with the aggregate of the incidents grouped by the event types.
 
+### Results
+## Severe weather events that cause the largest number of incidents
+Calculate a total of all fatalities and injuries, so that we can find what events have the highest number of incidents. The new column is called incidents.  
+
+```{r}
+smallData$incidents = smallData$FATALITIES + smallData$INJURIES
+```
+
+We create a new set with the aggregate of the incidents grouped by the event types.
+
 ```{r}
 incidentData <- aggregate(list(incidents = smallData$incidents), by = list(event = smallData$category), 
     FUN = sum, na.rm = TRUE)
@@ -199,7 +228,9 @@ ggplot(incidentData, aes(y = incidents)) + theme(axis.text.x = element_text(angl
 ```
 
 Clearly the convection events (Lightning, Tornadoes, Thunderstorm Wind, Hail) has the greatest effect on injury and fatality.
+
 ## Severe weather events that cause the largest amount of damage
+
 Add a field with a total of all damage, both to property as well as to crop, so that we can find our what events cause the highest amount of damage. The new column is called damage. The column is in billions of dollars.  
 
 ```{r}
@@ -221,6 +252,7 @@ ggplot(damageData, aes(y = damage)) + theme(axis.text.x = element_text(angle = 9
     hjust = 1)) + geom_bar(aes(x = event), data = damageData, stat = "identity") + 
     ggtitle("Property and crop damage") + xlab("Event Category") + ylab("Amount of damage (billions of $)")
 ```
+
 
 Clearly the flooding events (Flash Flood, River Flood) have the greatest effect on property damage and crop damage.
 
@@ -250,6 +282,7 @@ p <- p + coord_map() + theme_bw()
 p <- p + labs(x = "Long", y = "Lat", title = "Economic Damages")
 print(p)
 ```
+
 As we can see the western and central states of USA have been hit hard causing huge losses to economy fro the years 1950-2011.
 
 ##Reflections
@@ -258,3 +291,4 @@ As we can see the western and central states of USA have been hit hard causing h
 - As far as the imporvement in analysis is concerned, I believe a few more correlations between the features at stake would go onto provide more insights into the data set.
 - My Analysis has been that in terms of a broad sense. A few more intricate details can be covered within this data set leading to better results and conclusion from the data.
 - Features are less due to the fact that a large number of values are noth fathomable and have averaged ot value.
+
